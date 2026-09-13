@@ -1,0 +1,5 @@
+# 自进化元认知引擎 - Cordis bundle patch
+# 把 @sunwindy/dsh-tool-meta 注册为 DSH profile 的一个插件层
+- insert:
+    - id: meta
+      name: '@sunwindy/dsh-tool-meta'

@@ -1,0 +1,17 @@
+{
+  "name": "@sunwindy/dsh-tool-meta",
+  "version": "0.3.0",
+  "description": "自进化元认知引擎：观测 tools/result 成败 → 反思 → 自动沉淀 SKILL + 效果账本（选择）+ 能力盘（manifest/检索）→ 滋养（官方 seam，零私有格式）",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "dependencies": {},
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
