@@ -208,6 +208,34 @@ test("闸门：META_GATE=off 可整体关闭（治理开关）", () => {
   assert.equal(g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/x/*" } }), undefined);
 });
 
+// ---------- 五、误报回归（v0.4.1：闸门必须做工具作用域限定） ----------
+test("闸门：内容型工具 write 不被拦（文档里讨论删除 API 是合法的）", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({
+    name: "write",
+    arguments: { file_path: "/tmp/notes.md", content: "如何安全删除：os.remove(f) 与 rm -rf dir/* 都要小心" },
+  });
+  assert.equal(r, undefined, "内容型工具被误拦：" + String(r));
+});
+test("闸门：内容型工具 edit 不被拦", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({
+    name: "edit",
+    arguments: { file_path: "/tmp/doc.md", old_string: "x", new_string: "shutil.rmtree(dir)" },
+  });
+  assert.equal(r, undefined, String(r));
+});
+test("闸门：动作型工具仍然被拦（放宽作用域不能把闸门放空）", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/x/*" } }) === "string");
+  assert.ok(typeof g.evaluate({ name: "run_code", arguments: { code: "os.remove(f)" } }) === "string");
+});
+test("闸门：可用 META_GATE_SKIP_TOOLS 追加自定义内容型工具", () => {
+  const g = gateMod.createGate({ skipTools: ["my_notes_tool"] });
+  assert.equal(g.evaluate({ name: "my_notes_tool", arguments: { body: "rm -rf /x/*" } }), undefined);
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm -rf /x/*" } }) === "string");
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {

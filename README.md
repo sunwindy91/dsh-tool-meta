@@ -3,7 +3,7 @@
 > 观测 agent 的工具调用失败 → 反思 → **自动沉淀成 SKILL** → 下次会话自动带上（滋养）。
 > 全链路跑在 DSH 官方接口上：`tools/result` 事件 + SKILL 文件系统，**零私有格式**。
 
-[![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-31%2F31-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-35%2F35-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ## 一句话
 
@@ -30,7 +30,7 @@ git clone <this-repo> && cd dsh-tool-meta
 node tests/unit.mjs        # 期望 UNIT_OK（20/20）
 ```
 
-`tests/unit.mjs` **只用 Node 内置模块**，不依赖 DSH，任何干净环境都能跑（31 项）。它断言的是本项目的**治理承诺**：
+`tests/unit.mjs` **只用 Node 内置模块**，不依赖 DSH，任何干净环境都能跑（35 项）。它断言的是本项目的**治理承诺**：
 
 - 负向清单：缺凭据 / 沙箱拒绝 / 命令不存在 → **不沉淀**
 - 分类：UNKNOWN_TOOL / TOOL_OUTPUT_ERROR / 协作冲突 / 通用兜底
@@ -106,6 +106,7 @@ New-Item -ItemType Junction -Path node_modules -Target "<DSH 安装根>\node_mod
 | 显式删除但未声明 | 拒绝，并指出该调用 `meta_prepare` 声明什么 |
 | 已声明且覆盖全部目标 | 放行，并把声明写入审计流水（`gate:allow`） |
 | 代码型批量删除（`os.remove` / `rmSync` 等运行时算目标） | 必须声明 `scope + expected_count + backup_hash` 三者 |
+| **内容型工具**（write / edit / apply_patch…） | **不检查**——它们的参数是文本，可以合法地讨论删除命令（v0.4.1 修复；可用 `META_GATE_SKIP_TOOLS` 追加自己的内容型工具） |
 | 普通读写调用 | 不干预（闸门太吵就会被关掉，等于没有） |
 
 **开关与参数**：`META_GATE=off` 关闭闸门；`META_GATE_TTL_MIN` 声明有效期（默认 30 分钟）。
