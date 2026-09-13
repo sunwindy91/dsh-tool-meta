@@ -1,4 +1,4 @@
-// dsh-tool-meta 验证（v5，随 Outfit 打标升级）：模块加载 + 观测闭环 + 阈值 + 单级布局 + 账本
+// dsh-tool-meta 验证（v6，新增高危动作闸门 guard）：模块加载 + 观测闭环 + 阈值 + 单级布局 + 账本
 // + 负向清单 + 溯源 + 归档/恢复 + 审计 ledger + manifest 同步 + updated_at
 // + ledger_tag（Outfit 账本命名空间）+ board CAS
 // 期望输出 META_VERIFY_OK
@@ -15,16 +15,18 @@ const mod = await import("./lib/index.js");
 const { apply, __test } = mod;
 
 const registered = [];
+const guards = [];   // 闸门守卫（v6）：ctx.tools.guard 注册的同步检查函数
 const ctx = {
   on(ev, fn) {
     events.push(ev);
   },
   get() {
-    return { register: (t) => registered.push(t.name) };
+    return { register: (t) => registered.push(t.name), guard: (fn) => { guards.push(fn); return () => {}; } };
   },
   inject(spec, fn) {
-    fn({ register: (t) => registered.push(t.name) });
+    fn({ register: (t) => registered.push(t.name), guard: (fn) => { guards.push(fn); return () => {}; } });
   },
+  tools: { register: (t) => registered.push(t.name), guard: (fn) => { guards.push(fn); return () => {}; } },
 };
 const events = [];
 apply(ctx);
@@ -101,6 +103,35 @@ const hasOpAfter = (op) => auditAfter.some((l) => { try { return JSON.parse(l).o
 const archiveOk = a1.ok && lenArchived === 2 && r1.ok && lenRestored === 3 && hasOpAfter("archive") && hasOpAfter("restore");
 console.log("归档/恢复:", a1.ok, lenArchived, "→", r1.ok, lenRestored);
 
+// ===== v6：高危动作闸门（pre-execute guard）=====
+const gateRegistered = guards.length === 1;
+const g = guards[0] || (() => undefined);
+const denyWildcard = String(g({ name: "shell", arguments: { command: "rm -rf /tmp/work/*" } }) || "");
+const denyNoClaim = String(g({ name: "shell", arguments: { command: "rm /tmp/work/a.txt" } }) || "");
+const claim = __test.gate.prepare({
+  action: "delete", targets: ["/tmp/work/a.txt"], backup_source: "/tmp/work-bak", backup_hash: "deadbeefcafe",
+});
+const allowAfterPrepare = g({ name: "shell", arguments: { command: "rm /tmp/work/a.txt" } }) === undefined;
+const denyProtected = String(g({ name: "shell", arguments: { command: "rm -rf .dsh/skills/learn-x" } }) || "");
+const allowNonDelete = g({ name: "read", arguments: { path: "a.txt" } }) === undefined;
+const gateAuditOk = (() => {
+  const lines = fs.readFileSync(path.join(TMP, ".audit", "ledger.jsonl"), "utf-8").trim().split("\n").filter(Boolean);
+  const ops = lines.map((l) => { try { return JSON.parse(l).op; } catch { return "?"; } });
+  return ops.includes("gate:prepare") && ops.includes("gate:deny") && ops.includes("gate:allow");
+})();
+const gateOk = gateRegistered
+  && denyWildcard.includes("通配符")
+  && denyNoClaim.includes("meta_prepare")
+  && allowAfterPrepare
+  && denyProtected.includes("受保护")
+  && allowNonDelete
+  && gateAuditOk
+  && Boolean(claim && claim.id);
+console.log("闸门:", gateRegistered, "| 拦通配:", denyWildcard.includes("通配符"),
+  "| 拦未声明:", denyNoClaim.includes("meta_prepare"), "| 声明后放行:", allowAfterPrepare,
+  "| 拦受保护路径:", denyProtected.includes("受保护"), "| 不拦普通调用:", allowNonDelete,
+  "| 审计含 gate:*:", gateAuditOk);
+
 const ok =
   __test.observers.length === 1 &&
   registered.includes("meta_status") &&
@@ -115,6 +146,7 @@ const ok =
   collab && collab.trials === 0 &&
   singleLevel && noNamespace &&
   provenanceOk && updatedAtOk && tagFrontOk &&
-  auditOk && manifestFresh && manifestTagOk && searchOk && boardOk && archiveOk;
+  auditOk && manifestFresh && manifestTagOk && searchOk && boardOk && archiveOk && gateOk &&
+  registered.includes("meta_prepare");
 console.log(ok ? "META_VERIFY_OK" : "META_VERIFY_FAIL");
 process.exit(ok ? 0 : 1);

@@ -3,7 +3,7 @@
 > 观测 agent 的工具调用失败 → 反思 → **自动沉淀成 SKILL** → 下次会话自动带上（滋养）。
 > 全链路跑在 DSH 官方接口上：`tools/result` 事件 + SKILL 文件系统，**零私有格式**。
 
-[![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-20%2F20-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-31%2F31-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ## 一句话
 
@@ -19,8 +19,9 @@ agent 每次"翻车"（工具调用失败）达到阈值（同签名连续 2 次
 | **选择** | 按效果保留 | 效果账本 | `trials`（复发）/`successes`（被复用后验证） |
 | **遗传** | 传给下一代 | `manifest.json` + 检索 | 能力盘 + `meta_search` 关键词检索 |
 | **繁殖** | 下一代自动获得 | skill-filesystem 自动发现 | 无需任何代码（官方机制） |
+| **闸门** | 拦住"成功但错误"的动作 | `ctx.tools.guard`（pre-execute 单调守卫） | 不可逆操作（删除）执行前强制声明；通配符/受保护路径一律拒绝 |
 
-四个算子全部实现。工具面：`meta_status`（进度 + 账本）、`meta_search`（检索教训）、`meta_nourish`（开工前继承经验）、`meta_claim`（写入域声明，CAS 防互踩）、`meta_board`（看板）。
+四个算子全部实现。工具面：`meta_status`（进度 + 账本）、`meta_search`（检索教训）、`meta_nourish`（开工前继承经验）、`meta_claim`（写入域声明，CAS 防互踩）、`meta_board`（看板）、`meta_prepare`（**高危动作声明**——不可逆操作执行前必须先声明目标与备份证据）。
 
 ## 一、零依赖验证（推荐先跑这个）
 
@@ -29,7 +30,7 @@ git clone <this-repo> && cd dsh-tool-meta
 node tests/unit.mjs        # 期望 UNIT_OK（20/20）
 ```
 
-`tests/unit.mjs` **只用 Node 内置模块**，不依赖 DSH，任何干净环境都能跑。它断言的是本项目的**治理承诺**：
+`tests/unit.mjs` **只用 Node 内置模块**，不依赖 DSH，任何干净环境都能跑（31 项）。它断言的是本项目的**治理承诺**：
 
 - 负向清单：缺凭据 / 沙箱拒绝 / 命令不存在 → **不沉淀**
 - 分类：UNKNOWN_TOOL / TOOL_OUTPUT_ERROR / 协作冲突 / 通用兜底
@@ -37,6 +38,7 @@ node tests/unit.mjs        # 期望 UNIT_OK（20/20）
 - 单级布局 `<root>/<id>/SKILL.md`、去重（复发 `trials+1`）、账本（`successes` 累加）
 - 审计流水 `.audit/ledger.jsonl`（`precipitate`/`recur`/`verify`/`archive`/`restore` + UTC 时间戳 + `ledger_tag`）
 - **归档而非删除**（可恢复）、`pinned` 技能拒绝归档
+- **高危动作闸门**：通配符删除一律拒绝；受保护路径（能力盘/审计流水）拒绝；显式删除需先声明目标；代码型批量删除需声明 `scope + 预期条数 + 备份哈希`；`META_GATE=off` 可整体关闭
 
 ## 二、验证
 
@@ -88,6 +90,30 @@ New-Item -ItemType Junction -Path node_modules -Target "<DSH 安装根>\node_mod
 **我不会把这张表读成"能力提升"**：n=13、单机、无对照组；五天平线既可能是"学习起效后不再翻车"，
 也可能是"那几天没走到会触发的路径"——**两者无法区分**。完整的数据缺陷（早期 schema 缺字段、
 `successes/trials` 不是成功率、4 天跳跑）与结论边界写在 [`docs/observation.md`](docs/observation.md)。
+
+## 五点五、高危动作闸门（v0.4 新增）
+
+**为什么加**：本插件原本只从 `tools/result` 的**失败**中学习。但有一类错误**没有失败信号**——
+工具调用**成功了，决策却错了**：用通配符批量删除、超出计划范围地清理、误删不该删的目录。事后反思学不到它们，
+只能靠**执行前的硬闸门**。
+
+**怎么拦**（用官方 `ctx.tools.guard`，同步且单调拒绝——注册后没有任何监听器能翻案）：
+
+| 情形 | 行为 |
+|---|---|
+| 通配符删除（`rm -rf dir/*`） | **一律拒绝**（任何声明都不放行——"显式列举"就是闸门的意义） |
+| 受保护路径（能力盘 `.dsh/skills`、审计流水） | **一律拒绝** |
+| 显式删除但未声明 | 拒绝，并指出该调用 `meta_prepare` 声明什么 |
+| 已声明且覆盖全部目标 | 放行，并把声明写入审计流水（`gate:allow`） |
+| 代码型批量删除（`os.remove` / `rmSync` 等运行时算目标） | 必须声明 `scope + expected_count + backup_hash` 三者 |
+| 普通读写调用 | 不干预（闸门太吵就会被关掉，等于没有） |
+
+**开关与参数**：`META_GATE=off` 关闭闸门；`META_GATE_TTL_MIN` 声明有效期（默认 30 分钟）。
+**审计**：新增 `gate:prepare` / `gate:allow` / `gate:deny` 三类事件，落在同一份 `.audit/ledger.jsonl`。
+
+**诚实边界**（不吹成保险箱）：闸门能拦住**字面通配符/递归强制删除**与**未声明的删除**，
+但**拦不住精心构造的绕过**（例如把目标藏在运行时计算里、或分多步化整为零）。
+它的价值是"**让不可逆动作必须留下可审计的声明**"，而不是"保证万无一失"。这条边界写在 `docs/design.md`。
 
 ## 六、文档
 

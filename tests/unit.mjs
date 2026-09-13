@@ -16,6 +16,7 @@ process.env.META_LEDGER_TAG = "unit-test";
 
 const { reflect } = await import("../lib/reflector.js");
 const sw = await import("../lib/skillwriter.js");
+const gateMod = await import("../lib/gate.js");
 
 let passed = 0;
 const cases = [];
@@ -147,6 +148,64 @@ test("归档/恢复也进审计流水", () => {
   const ops = fs.readFileSync(path.join(TMP, ".audit", "ledger.jsonl"), "utf-8")
     .trim().split("\n").map((l) => JSON.parse(l).op);
   assert.ok(ops.includes("archive") && ops.includes("restore"), `实际 ${[...new Set(ops)]}`);
+});
+
+
+// ---------- 四、高危动作闸门（v6：不可逆操作的前置硬闸门） ----------
+test("闸门：普通读取不干预", () => {
+  const g = gateMod.createGate();
+  assert.equal(g.evaluate({ name: "read", arguments: { path: "a.txt" } }), undefined);
+});
+test("闸门：识别显式删除", () => {
+  const d = gateMod.detectDanger({ name: "shell", arguments: { command: "rm /tmp/a.txt" } });
+  assert.ok(d && d.kind === "explicit" && d.targets.some((t) => t.includes("/tmp/a.txt")), JSON.stringify(d));
+});
+test("闸门：识别代码型删除（抽不出目标清单）", () => {
+  const d = gateMod.detectDanger({ name: "run_code", arguments: { code: "import os\nfor f in fs: os.remove(f)" } });
+  assert.ok(d && d.kind === "code", JSON.stringify(d));
+});
+test("闸门：通配符删除一律拒绝（任何声明都放行不了）", () => {
+  const g = gateMod.createGate();
+  g.prepare({ action: "delete", targets: ["/tmp/work/*"], backup_source: "/tmp/bak", backup_hash: "x" });
+  const reason = g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/work/*" } });
+  assert.ok(typeof reason === "string" && reason.includes("通配符"), String(reason));
+});
+test("闸门：显式删除但未声明 → 拒绝并指路 meta_prepare", () => {
+  const g = gateMod.createGate();
+  const reason = g.evaluate({ name: "shell", arguments: { command: "rm /tmp/b/a.txt" } });
+  assert.ok(typeof reason === "string" && reason.includes("meta_prepare"), String(reason));
+});
+test("闸门：声明覆盖后放行", () => {
+  const g = gateMod.createGate();
+  g.prepare({ action: "delete", targets: ["/tmp/b/a.txt"], backup_source: "/tmp/bak", backup_hash: "abc123" });
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "rm /tmp/b/a.txt" } }), undefined);
+});
+test("闸门：声明不覆盖目标 → 仍拒绝", () => {
+  const g = gateMod.createGate();
+  g.prepare({ action: "delete", targets: ["/tmp/b/other.txt"], backup_source: "/tmp/bak", backup_hash: "abc" });
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm /tmp/b/a.txt" } }) === "string");
+});
+test("闸门：声明过期 → 拒绝", () => {
+  const g = gateMod.createGate({ ttlMs: -1 });
+  g.prepare({ action: "delete", targets: ["/tmp/b/a.txt"], backup_source: "/tmp/bak", backup_hash: "abc" });
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm /tmp/b/a.txt" } }) === "string");
+});
+test("闸门：受保护路径 → 拒绝（声明也不能放行）", () => {
+  const g = gateMod.createGate();
+  g.prepare({ action: "delete", targets: [".dsh/skills/learn-x"], backup_source: "/tmp/bak", backup_hash: "abc" });
+  const reason = g.evaluate({ name: "shell", arguments: { command: "rm -rf .dsh/skills/learn-x" } });
+  assert.ok(typeof reason === "string" && reason.includes("受保护"), String(reason));
+});
+test("闸门：代码型删除必须声明 scope + 条数 + 哈希", () => {
+  const g = gateMod.createGate();
+  const code = { name: "run_code", arguments: { code: "os.remove(f) for f in files  # /tmp/work" } };
+  assert.ok(typeof g.evaluate(code) === "string", "未声明应拒绝");
+  g.prepare({ action: "delete", scope: "/tmp/work", expected_count: 23, backup_source: "/tmp/bak", backup_hash: "abc" });
+  assert.equal(g.evaluate(code), undefined, "三项齐备应放行");
+});
+test("闸门：META_GATE=off 可整体关闭（治理开关）", () => {
+  const g = gateMod.createGate({ enabled: false });
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/x/*" } }), undefined);
 });
 
 console.log(cases.join("\n"));
