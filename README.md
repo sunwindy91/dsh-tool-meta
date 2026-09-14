@@ -3,7 +3,7 @@
 > 观测 agent 的工具调用失败 → 反思 → **自动沉淀成 SKILL** → 下次会话自动带上（滋养）。
 > 全链路跑在 DSH 官方接口上：`tools/result` 事件 + SKILL 文件系统，**零私有格式**。
 
-[![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-35%2F35-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-42%2F42-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ## 一句话
 
@@ -31,7 +31,7 @@ git clone <this-repo> && cd dsh-tool-meta
 node tests/unit.mjs        # 期望 UNIT_OK（20/20）
 ```
 
-`tests/unit.mjs` **只用 Node 内置模块**，不依赖 DSH，任何干净环境都能跑（35 项）。它断言的是本项目的**治理承诺**：
+`tests/unit.mjs` **只用 Node 内置模块**，不依赖 DSH，任何干净环境都能跑（42 项）。它断言的是本项目的**治理承诺**：
 
 - 负向清单：缺凭据 / 沙箱拒绝 / 命令不存在 → **不沉淀**
 - 分类：UNKNOWN_TOOL / TOOL_OUTPUT_ERROR / 协作冲突 / 通用兜底

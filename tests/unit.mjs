@@ -251,16 +251,16 @@ test("去碎片化：同工具同错误类的多条教训合并为一条且账�
     id, tool: "edit", title: "调用「edit」失败", triggers: ["edit", "失败"],
     body: `- 调用 \`edit\` 曾失败：${msg}`,
   });
-  sw.writeSkill(mk("learn-zzzz-1", "EIO: ReplaceFileW failed on /a/one.md"));
-  sw.writeSkill(mk("learn-zzzz-2", "EIO: ReplaceFileW failed on /b/two.md"));
-  sw.updateSkill("learn-zzzz-1", { trials: 3 });
+  sw.writeSkill(mk("learn-aaaaaaaaaaaa-111111111111", "EIO: ReplaceFileW failed on /a/one.md"));
+  sw.writeSkill(mk("learn-aaaaaaaaaaaa-222222222222", "EIO: ReplaceFileW failed on /b/two.md"));
+  sw.updateSkill("learn-aaaaaaaaaaaa-111111111111", { trials: 3 });
   const before = sw.countSkills();
   const rep = sw.compactSkills();
   assert.ok(rep.groups_merged >= 1, JSON.stringify(rep));
   assert.equal(sw.countSkills(), before - rep.archived, "活动条目数应等于 原数-归档数");
-  const canon = sw.listSkills().find((x) => x.id === "learn-zzzz-1");
+  const canon = sw.listSkills().find((x) => x.id === "learn-aaaaaaaaaaaa-111111111111");
   assert.ok(canon && canon.trials >= 3, "canonical 账本未累加");
-  const md = fs.readFileSync(path.join(TMP, "learn-zzzz-1", "SKILL.md"), "utf-8");
+  const md = fs.readFileSync(path.join(TMP, "learn-aaaaaaaaaaaa-111111111111", "SKILL.md"), "utf-8");
   assert.ok(/merged_from:/.test(md), "未记录 merged_from 来源");
   assert.ok(/^trials:\s*4\s*$/m.test(md) || /^trials:\s*[3-9]\d*\s*$/m.test(md), "trials 未累加: " + md.slice(0, 200));
 });
@@ -271,14 +271,32 @@ test("去碎片化：dry_run 不改动文件", () => {
   assert.ok(Array.isArray(rep.merged));
 });
 test("去碎片化：被合并条目进归档可恢复（不是删除）", () => {
-  assert.ok(fs.existsSync(path.join(TMP, ".archive", "learn-zzzz-2", "SKILL.md")), "应进 .archive");
-  const r = sw.restoreSkill("learn-zzzz-2");
+  assert.ok(fs.existsSync(path.join(TMP, ".archive", "learn-aaaaaaaaaaaa-222222222222", "SKILL.md")), "应进 .archive");
+  const r = sw.restoreSkill("learn-aaaaaaaaaaaa-222222222222");
   assert.equal(r.ok, true);
-  sw.archiveSkill("learn-zzzz-2"); // 收尾归位
+  sw.archiveSkill("learn-aaaaaaaaaaaa-222222222222"); // 收尾归位
 });
 test("去碎片化：审计流水留下 compact 事件", () => {
   const raw = fs.readFileSync(path.join(TMP, ".audit", "ledger.jsonl"), "utf-8");
   assert.ok(raw.split("\n").some((l) => l.includes('"op":"compact"')), "缺少 compact 审计事件");
+});
+
+
+test("去碎片化：专类教训（collab）不参与自动合并", () => {
+  sw.writeSkill({
+    id: "learn-collab-aaaaaaaaaaaa-bbbbbbbbbbbb", tool: "edit",
+    title: "协作冲突：并发/版本冲突（学怎么协作）", triggers: ["edit", "协作"],
+    body: "- 并行写文件前先 read 最新版本。\n- 失败信息：EIO: failed on /x/one.md",
+  });
+  sw.writeSkill({
+    id: "learn-cccccccccccc-dddddddddddd", tool: "edit",
+    title: "调用「edit」失败", triggers: ["edit", "失败"],
+    body: "- 调用 \`edit\` 曾失败：EIO: failed on /y/two.md",
+  });
+  const rep = sw.compactSkills();
+  const collabAlive = sw.listSkills().some((x) => x.id.startsWith("learn-collab-"));
+  assert.ok(collabAlive, "专类教训不应被合并/归档");
+  assert.ok(rep.merged.every((m) => !m.merged_from.some((i) => i.startsWith("learn-collab-"))), "合并来源里不应出现专类教训");
 });
 
 console.log(cases.join("\n"));
