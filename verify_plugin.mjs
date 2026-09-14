@@ -132,6 +132,23 @@ console.log("闸门:", gateRegistered, "| 拦通配:", denyWildcard.includes("�
   "| 拦受保护路径:", denyProtected.includes("受保护"), "| 不拦普通调用:", allowNonDelete,
   "| 审计含 gate:*:", gateAuditOk);
 
+// ===== v0.4.2：去碎片化（错误类归一 + 合并归档）=====
+const { compactSkills } = await import("./lib/skillwriter.js");
+const mkSkill = (id, tool, msg) => ({ id, tool, title: `调用「${tool}」失败`, triggers: [tool, "失败"], body: `- 调用 \`${tool}\` 曾失败：${msg}` });
+const { writeSkill: ws2, updateSkill: us2 } = await import("./lib/skillwriter.js");
+ws2(mkSkill("learn-dup-1", "edit", "EIO: failed on /a/one.md"));
+ws2(mkSkill("learn-dup-2", "edit", "EIO: failed on /b/two.md"));
+us2("learn-dup-1", { trials: 5 });
+const compactRep = compactSkills();
+const compactOk =
+  registered.includes("meta_compact") &&
+  compactRep.groups_merged >= 1 &&
+  compactRep.archived >= 1 &&
+  fs.existsSync(path.join(TMP, ".archive", "learn-dup-2", "SKILL.md")) &&
+  /"op":"compact"/.test(fs.readFileSync(path.join(TMP, ".audit", "ledger.jsonl"), "utf-8"));
+console.log("去碎片化:", compactOk, "| 合并组:", compactRep.groups_merged, "| 归档:", compactRep.archived,
+  "| meta_compact 已注册:", registered.includes("meta_compact"));
+
 const ok =
   __test.observers.length === 1 &&
   registered.includes("meta_status") &&
@@ -146,7 +163,7 @@ const ok =
   collab && collab.trials === 0 &&
   singleLevel && noNamespace &&
   provenanceOk && updatedAtOk && tagFrontOk &&
-  auditOk && manifestFresh && manifestTagOk && searchOk && boardOk && archiveOk && gateOk &&
+  auditOk && manifestFresh && manifestTagOk && searchOk && boardOk && archiveOk && gateOk && compactOk &&
   registered.includes("meta_prepare");
 console.log(ok ? "META_VERIFY_OK" : "META_VERIFY_FAIL");
 process.exit(ok ? 0 : 1);

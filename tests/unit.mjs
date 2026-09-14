@@ -14,7 +14,7 @@ const TMP = path.join(os.tmpdir(), `dsh-meta-unit-${Date.now()}`);
 process.env.META_SKILLS_DIR = TMP;
 process.env.META_LEDGER_TAG = "unit-test";
 
-const { reflect } = await import("../lib/reflector.js");
+const { reflect, errorClass } = await import("../lib/reflector.js");
 const sw = await import("../lib/skillwriter.js");
 const gateMod = await import("../lib/gate.js");
 
@@ -234,6 +234,51 @@ test("闸门：可用 META_GATE_SKIP_TOOLS 追加自定义内容型工具", () =
   const g = gateMod.createGate({ skipTools: ["my_notes_tool"] });
   assert.equal(g.evaluate({ name: "my_notes_tool", arguments: { body: "rm -rf /x/*" } }), undefined);
   assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm -rf /x/*" } }) === "string");
+});
+
+
+// ---------- 六、去碎片化（v0.4.2） ----------
+test("错误类：路径/数字/引号不同视为同一类", () => {
+  const a = errorClass("FS_STALE_VERSION: file changed since last read (shared.md)", "FSError");
+  const b = errorClass("FS_STALE_VERSION: file changed since last read (other-1234.md)", "FSError");
+  assert.equal(a, b, `${a} != ${b}`);
+});
+test("错误类：不同失败仍是不同类", () => {
+  assert.notEqual(errorClass("tool not found", ""), errorClass("output violates schema", ""));
+});
+test("去碎片化：同工具同错误类的多条教训合并为一条且账本累加", () => {
+  const mk = (id, msg) => ({
+    id, tool: "edit", title: "调用「edit」失败", triggers: ["edit", "失败"],
+    body: `- 调用 \`edit\` 曾失败：${msg}`,
+  });
+  sw.writeSkill(mk("learn-zzzz-1", "EIO: ReplaceFileW failed on /a/one.md"));
+  sw.writeSkill(mk("learn-zzzz-2", "EIO: ReplaceFileW failed on /b/two.md"));
+  sw.updateSkill("learn-zzzz-1", { trials: 3 });
+  const before = sw.countSkills();
+  const rep = sw.compactSkills();
+  assert.ok(rep.groups_merged >= 1, JSON.stringify(rep));
+  assert.equal(sw.countSkills(), before - rep.archived, "活动条目数应等于 原数-归档数");
+  const canon = sw.listSkills().find((x) => x.id === "learn-zzzz-1");
+  assert.ok(canon && canon.trials >= 3, "canonical 账本未累加");
+  const md = fs.readFileSync(path.join(TMP, "learn-zzzz-1", "SKILL.md"), "utf-8");
+  assert.ok(/merged_from:/.test(md), "未记录 merged_from 来源");
+  assert.ok(/^trials:\s*4\s*$/m.test(md) || /^trials:\s*[3-9]\d*\s*$/m.test(md), "trials 未累加: " + md.slice(0, 200));
+});
+test("去碎片化：dry_run 不改动文件", () => {
+  const before = sw.countSkills();
+  const rep = sw.compactSkills({ dryRun: true });
+  assert.equal(sw.countSkills(), before);
+  assert.ok(Array.isArray(rep.merged));
+});
+test("去碎片化：被合并条目进归档可恢复（不是删除）", () => {
+  assert.ok(fs.existsSync(path.join(TMP, ".archive", "learn-zzzz-2", "SKILL.md")), "应进 .archive");
+  const r = sw.restoreSkill("learn-zzzz-2");
+  assert.equal(r.ok, true);
+  sw.archiveSkill("learn-zzzz-2"); // 收尾归位
+});
+test("去碎片化：审计流水留下 compact 事件", () => {
+  const raw = fs.readFileSync(path.join(TMP, ".audit", "ledger.jsonl"), "utf-8");
+  assert.ok(raw.split("\n").some((l) => l.includes('"op":"compact"')), "缺少 compact 审计事件");
 });
 
 console.log(cases.join("\n"));

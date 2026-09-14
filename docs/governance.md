@@ -21,7 +21,7 @@
 | **溯源标记** | frontmatter 写 `created_by: agent`（区分人工写的技能） |
 | **时间戳** | `created_at`（日期）+ `updated_at`（ISO 毫秒，每次账本变更刷新） |
 | **账本命名空间** | `ledger_tag`（`META_LEDGER_TAG`，默认 `default`）——每套模式一个 tag，写进 frontmatter / audit / manifest |
-| **审计流水** | `<root>/.audit/ledger.jsonl` append-only，记录八类操作：`precipitate` / `recur` / `verify` / `archive` / `restore` + **`gate:prepare` / `gate:allow` / `gate:deny`**（不可逆动作的声明、放行与拒绝），每条带 UTC ISO 时间戳 |
+| **审计流水** | `<root>/.audit/ledger.jsonl` append-only，记录八类操作：`precipitate` / `recur` / `verify` / `archive` / `restore` / **`compact`** + **`gate:prepare` / `gate:allow` / `gate:deny`**（不可逆动作的声明、放行与拒绝），每条带 UTC ISO 时间戳 |
 
 审计流水是**只追加**的：任何"这条教训什么时候被谁归档过"都能逐事件追问，而不是只看最终状态。
 
@@ -76,3 +76,18 @@ v0.4 增加一道**执行前**的硬闸门（`ctx.tools.guard`，同步、单调
 因此在事故发生后可以回答："**这次删除是谁在几点、依据哪份备份、声明了哪些目标**"。
 
 **边界**：闸门保证"不可逆动作必须留下可审计的声明"，**不保证拦住所有绕过**（见 `design.md` §七 已知局限）。
+
+
+## 八、能力盘卫生：去碎片化（v0.4.2）
+
+治理不只是"别删除"，还包括"**别让能力盘越攒越没用**"。
+
+| 规则 | 说明 |
+|---|---|
+| **沉淀即归一** | 失败消息先归一到"错误类"（抹掉路径/数字/引号/十六进制），再按 `tool + 错误类` 去重 |
+| **存量可整理** | `meta_compact` 合并同组教训：账本累加、`merged_from` 记来源、**原条归档而非删除** |
+| **可逆** | 合并错误的条目可从 `.archive/` 逐条 `restore`；`compact` 事件写审计流水 |
+| **不越界** | 只处理 `learn-*`（agent 自动沉淀的），不动人工维护的 SKILL |
+| **不引依赖** | 用"错误类"而非 embedding 相似度——保守归并，宁留碎片不误并 |
+
+**判据**：整理后 `meta_status` 的条目数下降，而 `meta_search` 对同一关键词的**首位命中相关性上升**。

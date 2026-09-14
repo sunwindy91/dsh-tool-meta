@@ -19,9 +19,10 @@ agent 每次"翻车"（工具调用失败）达到阈值（同签名连续 2 次
 | **选择** | 按效果保留 | 效果账本 | `trials`（复发）/`successes`（被复用后验证） |
 | **遗传** | 传给下一代 | `manifest.json` + 检索 | 能力盘 + `meta_search` 关键词检索 |
 | **繁殖** | 下一代自动获得 | skill-filesystem 自动发现 | 无需任何代码（官方机制） |
+| **整理** | 经验别越攒越碎 | `meta_compact`：错误类归一 + 合并归档（可恢复） |
 | **闸门** | 拦住"成功但错误"的动作 | `ctx.tools.guard`（pre-execute 单调守卫） | 不可逆操作（删除）执行前强制声明；通配符/受保护路径一律拒绝 |
 
-四个算子全部实现。工具面：`meta_status`（进度 + 账本）、`meta_search`（检索教训）、`meta_nourish`（开工前继承经验）、`meta_claim`（写入域声明，CAS 防互踩）、`meta_board`（看板）、`meta_prepare`（**高危动作声明**——不可逆操作执行前必须先声明目标与备份证据）。
+四个算子全部实现。工具面：`meta_status`（进度 + 账本）、`meta_search`（检索教训）、`meta_nourish`（开工前继承经验）、`meta_claim`（写入域声明，CAS 防互踩）、`meta_board`（看板）、`meta_prepare`（**高危动作声明**——不可逆操作执行前必须先声明目标与备份证据）、`meta_compact`（**能力盘去碎片化**——合并同工具同错误类的重复教训）。
 
 ## 一、零依赖验证（推荐先跑这个）
 
