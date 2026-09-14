@@ -3,6 +3,8 @@
 > 观测 agent 的工具调用失败 → 反思 → **自动沉淀成 SKILL** → 下次会话自动带上（滋养）。
 > 全链路跑在 DSH 官方接口上：`tools/result` 事件 + SKILL 文件系统，**零私有格式**。
 
+> **English summary: [README.en.md](README.en.md)** — what it does, the gate in one table, how to verify it, related work (Ratchet / Permit0) and known limitations.
+
 [![verify](https://img.shields.io/badge/verify-META__VERIFY__OK-brightgreen)](#二验证) [![unit](https://img.shields.io/badge/unit%20tests-42%2F42-brightgreen)](tests/unit.mjs) [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ## 一句话
