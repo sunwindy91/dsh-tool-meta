@@ -17,6 +17,7 @@ process.env.META_LEDGER_TAG = "unit-test";
 const { reflect, errorClass } = await import("../lib/reflector.js");
 const sw = await import("../lib/skillwriter.js");
 const gateMod = await import("../lib/gate.js");
+const selMod = await import("../lib/selector.js");
 
 let passed = 0;
 const cases = [];
@@ -297,6 +298,41 @@ test("去碎片化：专类教训（collab）不参与自动合并", () => {
   const collabAlive = sw.listSkills().some((x) => x.id.startsWith("learn-collab-"));
   assert.ok(collabAlive, "专类教训不应被合并/归档");
   assert.ok(rep.merged.every((m) => !m.merged_from.some((i) => i.startsWith("learn-collab-"))), "合并来源里不应出现专类教训");
+});
+
+// ---------- 七、v0.4.4 缺陷回归（先红后绿） ----------
+// 缺陷 1（旧）：成功加分是"该工具的第一条教训"（readdir 顺序）= 随机 → 账本不可复现。
+// 修复：抽成纯函数 pickRepresentative（successes 高 → trials 高 → 创建早），并单测它。
+test("缺陷1：代表教训选取是确定性的（账本厚者优先，并列取创建早）", () => {
+  const a = { id: "a", successes: 1, trials: 0, created_at: "2026-01-01" };
+  const b = { id: "b", successes: 5, trials: 0, created_at: "2026-02-01" };
+  const c = { id: "c", successes: 5, trials: 2, created_at: "2026-03-01" };
+  assert.equal(selMod.pickRepresentative([a, b, c]).id, "c", "successes 同为 5 时取 trials 高者");
+  assert.equal(selMod.pickRepresentative([a, b]).id, "b");
+  // 并列完全相同时取创建更早的
+  const d = { id: "d", successes: 2, trials: 1, created_at: "2026-05-01" };
+  const e = { id: "e", successes: 2, trials: 1, created_at: "2026-04-01" };
+  assert.equal(selMod.pickRepresentative([d, e]).id, "e", "并列取创建早者");
+  // 顺序无关（确定性）
+  assert.equal(selMod.pickRepresentative([b, a, c]).id, "c");
+  assert.equal(selMod.pickRepresentative([]), null);
+});
+
+// 缺陷 2（旧）：meta_prepare 的声明在有效期内可无限次放行，与"放行一次"的承诺不符。
+test("缺陷2：声明放行一次后即失效（第二次同类调用必须被拒）", () => {
+  const g = gateMod.createGate({ audit: sw.audit }); // 用真实审计，验证 gate:consume 落账
+  const call = { name: "shell", arguments: { command: "rm -rf /tmp/one/a.txt" } };
+  assert.ok(typeof g.evaluate(call) === "string", "未声明应拒绝");
+  const c = g.prepare({ action: "delete", targets: ["/tmp/one/a.txt"], backup_source: "/tmp/bak", backup_hash: "h1" });
+  assert.equal(g.evaluate(call), undefined, "声明后第一次应放行");
+  const second = g.evaluate(call);
+  assert.ok(typeof second === "string", "第二次必须被拒（声明一次性）");
+  assert.ok(!g.list().some((x) => x.id === c.id), "已消费的声明不应再出现在活动声明里");
+});
+
+test("缺陷2b：审计流水记录声明的消费（gate:consume）", () => {
+  const raw = fs.readFileSync(path.join(TMP, ".audit", "ledger.jsonl"), "utf-8");
+  assert.ok(raw.split("\n").some((l) => l.includes('"op":"gate:consume"')), "缺少 gate:consume 事件");
 });
 
 console.log(cases.join("\n"));

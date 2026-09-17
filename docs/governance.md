@@ -21,7 +21,7 @@
 | **溯源标记** | frontmatter 写 `created_by: agent`（区分人工写的技能） |
 | **时间戳** | `created_at`（日期）+ `updated_at`（ISO 毫秒，每次账本变更刷新） |
 | **账本命名空间** | `ledger_tag`（`META_LEDGER_TAG`，默认 `default`）——每套模式一个 tag，写进 frontmatter / audit / manifest |
-| **审计流水** | `<root>/.audit/ledger.jsonl` append-only，记录八类操作：`precipitate` / `recur` / `verify` / `archive` / `restore` / **`compact`** + **`gate:prepare` / `gate:allow` / `gate:deny`**（不可逆动作的声明、放行与拒绝），每条带 UTC ISO 时间戳 |
+| **审计流水** | `<root>/.audit/ledger.jsonl` append-only，记录八类操作：`precipitate` / `recur` / `verify` / `archive` / `restore` / **`compact`** + **`gate:prepare` / `gate:allow` / `gate:deny` / `gate:consume`**（不可逆动作的声明、放行与拒绝），每条带 UTC ISO 时间戳 |
 
 审计流水是**只追加**的：任何"这条教训什么时候被谁归档过"都能逐事件追问，而不是只看最终状态。
 
@@ -92,3 +92,23 @@ v0.4 增加一道**执行前**的硬闸门（`ctx.tools.guard`，同步、单调
 
 **判据**：整理后 `meta_status` 的条目数下降，而 `meta_search` 对同一关键词的**首位命中相关性上升**；
 且 `.archive/` 中可恢复条目数 = 本次归档数（**任何自动整理都必须可回退**）。
+
+
+## 九、两个记账口径的诚实说明（v0.4.4）
+
+治理的可信度取决于**账本诚实**，所以把两处口径写清楚：
+
+### 1. `successes` 是"工具级"信号，不是"这一条教训被验证"
+
+宿主不会告诉插件"这一轮到底加载了哪条技能"，因此插件无法知道**具体哪条教训**起了作用。
+现在的做法：把成功记在该工具的**一条代表教训**上，并保证选取是**确定性的**
+（`successes` 最高 → `trials` 最高 → 创建最早；抽成纯函数 `lib/selector.js`，可单测）。
+审计事件带 `scope: "tool-level"` 与候选条数，避免被误读成"这条教训被独立验证了"。
+
+> 旧实现用目录读取顺序（等于随机）——同一个账本在不同机器上会给出不同数字，这是 v0.4.4 修掉的缺陷。
+
+### 2. 闸门声明是**一次性**的
+
+`meta_prepare` 的声明放行一次即失效（`gate:consume` 落账）。
+旧实现只在有效期（默认 30 分钟）内判断"有没有声明"，同一份声明可以**无限次**放行同类删除——
+与工具描述承诺的"放行一次"不符，是 v0.4.4 修掉的第二个真实缺陷。

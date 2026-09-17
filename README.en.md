@@ -2,7 +2,7 @@
 
 **A self-evolving metacognitive engine for [DSH](https://github.com/deepseek-ai/deepseek-harness) — it learns from its own tool failures, governs what it learns, and gates irreversible actions before they run.**
 
-[中文主文档](README.md) · [Design notes](docs/design.md) · [Governance](docs/governance.md) · [Observation data](docs/observation.md) · [Unit tests (42/42)](tests/unit.mjs)
+[中文主文档](README.md) · [Design notes](docs/design.md) · [Governance](docs/governance.md) · [Observation data](docs/observation.md) · [Unit tests (45/45)](tests/unit.mjs)
 
 ---
 
@@ -33,7 +33,7 @@ Then, after using it in production, one more thing became obvious — and it tur
 
 **Tool surface (7):** `meta_status` · `meta_search` · `meta_nourish` · `meta_claim` · `meta_board` · `meta_prepare` · `meta_compact`
 
-**Audit ledger (9 event types):** `precipitate` · `recur` · `verify` · `archive` · `restore` · `compact` · `gate:prepare` · `gate:allow` · `gate:deny`
+**Audit ledger (10 event types):** `precipitate` · `recur` · `verify` · `archive` · `restore` · `compact` · `gate:prepare` · `gate:allow` · `gate:deny` · `gate:consume`
 — one append-only `JSONL`, so "what did it learn, and what did it allow?" can be answered on a single timeline.
 
 ---
@@ -60,7 +60,7 @@ Then, after using it in production, one more thing became obvious — and it tur
 git clone https://github.com/sunwindy91/dsh-tool-meta
 cd dsh-tool-meta
 
-node tests/unit.mjs        # 42/42 · zero dependencies (Node built-ins only) → prints UNIT_OK
+node tests/unit.mjs        # 45/45 · zero dependencies (Node built-ins only) → prints UNIT_OK
 node verify_plugin.mjs     # full chain against a fake host context → prints META_VERIFY_OK
 ```
 
@@ -70,7 +70,7 @@ Install into a DSH profile as a plugin layer (see `cordis.patch.yml`). Environme
 
 ## Verification, not vibes
 
-- `tests/unit.mjs` — **42 assertions, zero dependencies**: reflection rules, threshold, negative list, ledger, archive/restore, gate (both directions), error-class normalisation, compaction, and the two regression classes.
+- `tests/unit.mjs` — **45 assertions, zero dependencies**: reflection rules, threshold, negative list, ledger, archive/restore, gate (both directions), error-class normalisation, compaction, and the two regression classes.
 - `verify_plugin.mjs` — full-chain run against a fake context: observation loop, threshold, single-level layout, provenance, ledger tags, manifest freshness, archive/restore, board CAS, gate (6 assertion classes), compaction.
 - `docs/observation.md` — **honest self-observation**: snapshots of the library over time, including skipped days and a flat stretch that is explicitly documented as **not** evidence of improvement (single machine, n = 13, no control group).
 - Every claim in this README maps to a file you can run.
