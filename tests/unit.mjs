@@ -335,6 +335,43 @@ test("缺陷2b：审计流水记录声明的消费（gate:consume）", () => {
   assert.ok(raw.split("\n").some((l) => l.includes('"op":"gate:consume"')), "缺少 gate:consume 事件");
 });
 
+// ---------- 八、v0.4.5：只在"命令位"判删除（修"只读命令提到删除也被拦"的误报） ----------
+// 背景：v0.4.4 之后实测到——一条只读命令（用搜索工具去找若干删除写法）被判成删除动作。
+// 根因：检测在"整段文本"里找信号，而不是看"这一段到底在执行什么命令"。
+// 修法：① 只分析参数的字符串叶子；② 按语句分隔切段；③ 段首是"读/搜/打印类命令"→跳过（它的参数是文本）；
+//       ④ 段首是执行器（python/node/pwsh…）→ 递归解析它真正执行的内部命令。
+
+test("v0.4.5：只读搜索命令提到删除写法 → 不拦（这是本次误报的正例）", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({
+    name: "pwsh",
+    arguments: { command: "Select-String -Path docs/*.md -Pattern 'Remove-Item','os.remove'" },
+  });
+  assert.equal(r, undefined, "只读搜索不应被拦：" + String(r));
+});
+test("v0.4.5：grep 里出现删除写法 → 不拦", () => {
+  const g = gateMod.createGate();
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "grep -rn 'rm -rf ' ." } }), undefined);
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "echo 'shutil.rmtree(dir)'" } }), undefined);
+});
+test("v0.4.5：但真正的删除命令仍然被拦（放宽不能把闸门放空）", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/x/*" } }) === "string", "直接删除应拦");
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "os.remove(f)" } }) === "string", "代码型应拦");
+});
+test("v0.4.5：执行器内部命令要递归解析", () => {
+  const g = gateMod.createGate();
+  // pwsh -Command 里真的在删 → 应拦
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "pwsh -Command \"Remove-Item -Path /tmp/a -Recurse\"" } }) === "string", "执行器内部删除应拦");
+  // pwsh -Command 里只是搜索 → 不拦
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "pwsh -Command \"Select-String -Pattern 'Remove-Item'\"" } }), undefined, "执行器内部只读不应拦");
+});
+test("v0.4.5：多段命令里只要有一段是删除就拦", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "shell", arguments: { command: "ls /tmp && rm -rf /tmp/y/*" } });
+  assert.ok(typeof r === "string", "多段中的删除段应被拦：" + String(r));
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
