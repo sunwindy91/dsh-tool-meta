@@ -372,6 +372,75 @@ test("v0.4.5：多段命令里只要有一段是删除就拦", () => {
   assert.ok(typeof r === "string", "多段中的删除段应被拦：" + String(r));
 });
 
+// ---------- 九、v0.5：对外不可逆动作也要先声明（且必须写"前置核验"） ----------
+// 真实事故（2026-09-17）：① 没查 open PR 就公开认领 issue（AGT #3915，被早 8 天的 PR 抢先）
+//                      ② 脱敏扫描与 push 并行，没等结果就推（带出本地路径）
+// 共同点：**对外、不可逆、且缺少强制的前置核验**。删除有闸门，对外动作没有 → 补上。
+
+test("v0.5：git push 未声明 → 拒绝", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "shell", arguments: { command: "git push origin main" } });
+  assert.ok(typeof r === "string" && /声明|核验/.test(r), String(r));
+});
+
+test("v0.5：声明了、且写了前置核验 → 放行；再推一次 → 拒绝（一次性）", () => {
+  const g = gateMod.createGate();
+  const call = { name: "shell", arguments: { command: "git push origin main" } };
+  const c = g.prepare({
+    action: "publish", target: "origin/main",
+    precondition: "desensitize_scan 扫 0 命中 + 测试 50/50 通过",
+  });
+  assert.equal(g.evaluate(call), undefined, "声明齐备应放行");
+  assert.ok(typeof g.evaluate(call) === "string", "第二次必须被拒（声明一次性）");
+  assert.ok(!g.list().some((x) => x.id === c.id), "声明应已被消费");
+});
+
+test("v0.5：只写 target、不写前置核验 → 声明不成立（拒绝）", () => {
+  const g = gateMod.createGate();
+  const c = g.prepare({ action: "publish", target: "origin/main" });
+  const r = g.evaluate({ name: "shell", arguments: { command: "git push origin main" } });
+  assert.ok(typeof r === "string", "缺 precondition 不应放行：" + String(r));
+});
+
+test("v0.5：公开评论/发 issue 未声明 → 拒绝", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({
+    name: "shell",
+    arguments: { command: "gh issue comment 3915 -R owner/repo --body 'claim'" },
+  }) === "string");
+  assert.ok(typeof g.evaluate({
+    name: "shell",
+    arguments: { command: "gh pr create --title x --body y" },
+  }) === "string");
+});
+
+test("v0.5：只读的 gh 命令不受影响（否则闸门会被关掉）", () => {
+  const g = gateMod.createGate();
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "gh pr list -R owner/repo --state open" } }), undefined);
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "gh issue view 1 -R owner/repo" } }), undefined);
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "git commit -m 'x'" } }), undefined);
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "git status" } }), undefined);
+});
+
+test("v0.5：强制推送一律拒绝（声明也不能豁免）", () => {
+  const g = gateMod.createGate();
+  g.prepare({ action: "publish", target: "origin/main", precondition: "已核验" });
+  const r = g.evaluate({ name: "shell", arguments: { command: "git push --force origin main" } });
+  assert.ok(typeof r === "string" && /强制|force/i.test(r), String(r));
+});
+
+test("v0.5：发布类命令也要声明（npm / docker push）", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "npm publish --access public" } }) === "string");
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "docker push repo/img:tag" } }) === "string");
+});
+
+test("v0.5：META_GATE_OUTWARD=off 可单独关掉对外闸门（保留删除闸门）", () => {
+  const g = gateMod.createGate({ outward: false });
+  assert.equal(g.evaluate({ name: "shell", arguments: { command: "git push origin main" } }), undefined, "对外闸门关闭后应放行");
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/x/*" } }) === "string", "删除闸门仍应生效");
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {

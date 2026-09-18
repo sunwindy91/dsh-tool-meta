@@ -2,7 +2,7 @@
 
 **A self-evolving metacognitive engine for [DSH](https://github.com/deepseek-ai/deepseek-harness) — it learns from its own tool failures, governs what it learns, and gates irreversible actions before they run.**
 
-[中文主文档](README.md) · [Design notes](docs/design.md) · [Governance](docs/governance.md) · [Observation data](docs/observation.md) · [Unit tests (50/50)](tests/unit.mjs)
+[中文主文档](README.md) · [Design notes](docs/design.md) · [Governance](docs/governance.md) · [Observation data](docs/observation.md) · [Unit tests (58/58)](tests/unit.mjs)
 
 ---
 
@@ -60,7 +60,7 @@ Then, after using it in production, one more thing became obvious — and it tur
 git clone https://github.com/sunwindy91/dsh-tool-meta
 cd dsh-tool-meta
 
-node tests/unit.mjs        # 50/50 · zero dependencies (Node built-ins only) → prints UNIT_OK
+node tests/unit.mjs        # 58/58 · zero dependencies (Node built-ins only) → prints UNIT_OK
 node verify_plugin.mjs     # full chain against a fake host context → prints META_VERIFY_OK
 ```
 
@@ -70,7 +70,7 @@ Install into a DSH profile as a plugin layer (see `cordis.patch.yml`). Environme
 
 ## Verification, not vibes
 
-- `tests/unit.mjs` — **50 assertions, zero dependencies**: reflection rules, threshold, negative list, ledger, archive/restore, gate (both directions), error-class normalisation, compaction, and the two regression classes.
+- `tests/unit.mjs` — **58 assertions, zero dependencies**: reflection rules, threshold, negative list, ledger, archive/restore, gate (both directions), error-class normalisation, compaction, and the two regression classes.
 - `verify_plugin.mjs` — full-chain run against a fake context: observation loop, threshold, single-level layout, provenance, ledger tags, manifest freshness, archive/restore, board CAS, gate (6 assertion classes), compaction.
 - `docs/observation.md` — **honest self-observation**: snapshots of the library over time, including skipped days and a flat stretch that is explicitly documented as **not** evidence of improvement (single machine, n = 13, no control group).
 - Every claim in this README maps to a file you can run.
