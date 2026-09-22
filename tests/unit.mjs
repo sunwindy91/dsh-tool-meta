@@ -5,7 +5,7 @@
 // 干净克隆跑不了。而"治理约束"（负向清单 / 阈值去重 / 账本 / 审计 / 归档不删）必须人人可验证——
 // 所以这里绕开 defineTool，只测纯逻辑模块：reflector.js（纯规则）+ skillwriter.js（只用 node:fs）。
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from \"node:fs\";
+import { readFileSync, readdirSync } from "node:fs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
