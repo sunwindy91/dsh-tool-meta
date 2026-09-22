@@ -5,6 +5,7 @@
 // 干净克隆跑不了。而"治理约束"（负向清单 / 阈值去重 / 账本 / 审计 / 归档不删）必须人人可验证——
 // 所以这里绕开 defineTool，只测纯逻辑模块：reflector.js（纯规则）+ skillwriter.js（只用 node:fs）。
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from \"node:fs\";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -439,6 +440,51 @@ test("v0.5：META_GATE_OUTWARD=off 可单独关掉对外闸门（保留删除闸
   const g = gateMod.createGate({ outward: false });
   assert.equal(g.evaluate({ name: "shell", arguments: { command: "git push origin main" } }), undefined, "对外闸门关闭后应放行");
   assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "rm -rf /tmp/x/*" } }) === "string", "删除闸门仍应生效");
+});
+
+
+// ---------- v0.5.1：对外动作必须"在命令位"（修第三次同族误报） ----------
+test("v0.5.1：散文里提到 git push / npm publish → 不拦（给子代理的提示词就是这样被误拦的）", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "subagent", arguments: { prompt: "我说的对外动作包括 git push、公开评论、npm publish 等，请写进文档。" } });
+  assert.equal(r, undefined, "散文里提到不应拦：" + String(r));
+});
+
+test("v0.5.1：真正的命令 → 仍然拦", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "git push origin main" } }) === "string");
+});
+
+test("v0.5.1：包裹层里的命令 → 仍然拦（pwsh -c \"git push\"）", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "pwsh -c \"git push origin main\"" } }) === "string");
+});
+
+test("v0.5.1：提示词里独行成行的命令（代码块）→ 仍然拦", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "subagent", arguments: { prompt: "Run:\ngit push origin main" } });
+  assert.ok(typeof r === "string", "独行命令应被拦：" + String(r));
+});
+
+test("v0.5.1：中文句子里的 curl -X POST → 不拦", () => {
+  const g = gateMod.createGate();
+  assert.equal(g.evaluate({ name: "subagent", arguments: { prompt: "用 curl -X POST 可以把消息发到 webhook。" } }), undefined);
+});
+
+
+// ---------- v0.5.2：库代码不得写 stdout（headless 把 stdout 当结果通道） ----------
+test("v0.5.2：lib/ 下不得出现 console.log（否则会污染 headless 的结果通道）", () => {
+  const dir = new URL('../lib/', import.meta.url);
+  const bad = [];
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.js')) continue;
+    const src = readFileSync(new URL(f, dir), 'utf8');
+    for (const [i, line] of src.split('\n').entries()) {
+      // 注释里提 console.log 不算
+      if (/console\.log\(/.test(line) && !/^\s*(\/\/|\*)/.test(line)) bad.push(`${f}:${i + 1}`);
+    }
+  }
+  assert.deepEqual(bad, [], '这些位置写了 stdout：' + bad.join(', '));
 });
 
 console.log(cases.join("\n"));

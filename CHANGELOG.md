@@ -2,6 +2,16 @@
 
 本项目遵循语义化版本。所有条目都是**真实发生过的改动**（含被自己的测试抓住的 bug）。
 
+## 0.5.2 — 2026-09-22
+
+### Fixed
+- **插件日志不再写 stdout**（9 处 `console.log` → stderr，`META_LOG=off` 可静音）。
+
+  核验依据：headless 入口的契约是 "stream reasoning to stderr, **print the final assistant message**"，
+  即 stdout 是**结果通道**。实测 `dsh --profile headless --help` 的 stdout 里混入了其他插件的
+  apply 日志（`[imagegen] apply called` 等），调用方无法区分日志与结果。本插件不制造这个问题。
+- 新增**可执行的规矩断言**：`lib/` 下不得出现 `console.log`（写进单测，防止回退）。
+
 ## 0.5.0 — 2026-09-18
 
 ### Added
