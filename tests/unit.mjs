@@ -579,6 +579,26 @@ test("v0.5.3：拒绝文案里必须给出可达出路（文件式声明 / 哨�
   });
 });
 
+
+// ---------- v0.5.4：赋值前缀不得成为绕过路径（真实漏判） ----------
+test("v0.5.4：$o = git push … 必须被识别（这是我真实踩到的漏判）", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "pwsh", arguments: { command: "$o = git push origin main 2>&1 | Out-String" } });
+  assert.ok(typeof r === "string", "赋值前缀不该绕过：" + String(r));
+});
+
+test("v0.5.4：OUT=$(git push …) 与 FOO=1 git push 也要识别", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "OUT=$(git push origin main)" } }) === "string");
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "FOO=1 git push origin main" } }) === "string");
+});
+
+test("v0.5.4：纯文本里出现赋值语句不误报（中文变量名 / 说明性文字）", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "subagent", arguments: { prompt: "说明：推送命令写作 git push origin main；变量 x = 1。" } });
+  assert.equal(r, undefined, "说明性文字不该被拦：" + String(r));
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
