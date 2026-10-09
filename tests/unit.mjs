@@ -5,7 +5,9 @@
 // 干净克隆跑不了。而"治理约束"（负向清单 / 阈值去重 / 账本 / 审计 / 归档不删）必须人人可验证——
 // 所以这里绕开 defineTool，只测纯逻辑模块：reflector.js（纯规则）+ skillwriter.js（只用 node:fs）。
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, mkdirSync, mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -485,6 +487,96 @@ test("v0.5.2：lib/ 下不得出现 console.log（否则会污染 headless 的�
     }
   }
   assert.deepEqual(bad, [], '这些位置写了 stdout：' + bad.join(', '));
+});
+
+
+// ---------- v0.5.3：声明与"关掉"必须有不依赖工具注册的路径 ----------
+function withSkillsDir(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'meta-gate-'));
+  const old = process.env.META_SKILLS_DIR;
+  process.env.META_SKILLS_DIR = dir;
+  mkdirSync(join(dir, '.audit'), { recursive: true });
+  try {
+    return fn(dir);
+  } finally {
+    if (old === undefined) delete process.env.META_SKILLS_DIR; else process.env.META_SKILLS_DIR = old;
+  }
+}
+
+const PUSH = { name: "shell", arguments: { command: "git push origin main" } };
+
+test("v0.5.3：文件式声明（publish + precondition）→ 放行；再推一次 → 拒绝（一次性）", () => {
+  withSkillsDir((dir) => {
+    const f = join(dir, '.audit', 'declarations.jsonl');
+    writeFileSync(f, JSON.stringify({ id: 'd1', action: 'publish', target: 'origin/main', precondition: '测试全绿 + 脱敏 0 命中' }) + '\n');
+    const g = gateMod.createGate();
+    assert.equal(g.evaluate(PUSH), undefined, "文件式声明应放行");
+    assert.ok(typeof g.evaluate(PUSH) === "string", "第二次必须被拒（一次性）");
+  });
+});
+
+test("v0.5.3：文件式声明缺 precondition → 仍然拒绝", () => {
+  withSkillsDir((dir) => {
+    writeFileSync(join(dir, '.audit', 'declarations.jsonl'),
+      JSON.stringify({ id: 'd2', action: 'publish', target: 'origin/main' }) + '\n');
+    const g = gateMod.createGate();
+    assert.ok(typeof g.evaluate(PUSH) === "string", "缺前置核验不该放行");
+  });
+});
+
+test("v0.5.3：哨兵文件 gate.outward.off → 不声明也放行（5 秒内可关）", () => {
+  withSkillsDir((dir) => {
+    writeFileSync(join(dir, '.audit', 'gate.outward.off'), '');
+    const g = gateMod.createGate();
+    assert.equal(g.evaluate(PUSH), undefined, "哨兵存在时应放行");
+  });
+});
+
+test("v0.5.3：环境变量在创建之后再设置也生效（开关即时读，不再固化）", () => {
+  withSkillsDir(() => {
+    const g = gateMod.createGate();                 // 先创建（此时 env 未设）
+    assert.ok(typeof g.evaluate(PUSH) === "string", "未开关时应拒绝");
+    process.env.META_GATE_OUTWARD = 'off';          // 创建之后再关
+    try {
+      assert.equal(g.evaluate(PUSH), undefined, "运行中关闭应立即生效");
+    } finally {
+      delete process.env.META_GATE_OUTWARD;
+    }
+    assert.ok(typeof g.evaluate(PUSH) === "string", "撤销开关后应恢复拦截");
+  });
+});
+
+test("v0.5.3：文件式删除声明（targets 齐全）→ 放行；缺 targets → 拒绝", () => {
+  withSkillsDir((dir) => {
+    const f = join(dir, '.audit', 'declarations.jsonl');
+    writeFileSync(f, JSON.stringify({ id: 'd3', action: 'delete', targets: ['build/out.txt'], backup_source: 'bak/', backup_hash: 'abc' }) + '\n');
+    const g = gateMod.createGate();
+    const call = { name: "shell", arguments: { command: "Remove-Item build/out.txt" } };
+    assert.equal(g.evaluate(call), undefined, "声明齐全应放行");
+  });
+  withSkillsDir((dir) => {
+    writeFileSync(join(dir, '.audit', 'declarations.jsonl'),
+      JSON.stringify({ id: 'd4', action: 'delete', backup_source: 'bak/' }) + '\n');
+    const g = gateMod.createGate();
+    assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: "Remove-Item build/out.txt" } }) === "string", "无 targets 不该放行");
+  });
+});
+
+test("v0.5.3：哨兵文件 gate.off → 整道闸门停用（不声明也放行删除）", () => {
+  withSkillsDir((dir) => {
+    writeFileSync(join(dir, '.audit', 'gate.off'), '');
+    const g = gateMod.createGate();
+    assert.equal(g.evaluate({ name: "shell", arguments: { command: "Remove-Item -Recurse -Force build" } }), undefined);
+  });
+});
+
+test("v0.5.3：拒绝文案里必须给出可达出路（文件式声明 / 哨兵）", () => {
+  withSkillsDir(() => {
+    const g = gateMod.createGate();
+    const msg = g.evaluate(PUSH);
+    assert.ok(/declarations\.jsonl/.test(msg), "应给出文件式声明路径：" + msg);
+    assert.ok(/gate\.outward\.off|META_GATE_OUTWARD/.test(msg), "应给出关掉这一类的方式");
+  });
 });
 
 console.log(cases.join("\n"));
