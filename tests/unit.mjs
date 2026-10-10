@@ -599,6 +599,78 @@ test("v0.5.4：纯文本里出现赋值语句不误报（中文变量名 / 说�
   assert.equal(r, undefined, "说明性文字不该被拦：" + String(r));
 });
 
+
+// ---------- v0.6.0：沉淀质量（症状 → 根因 → 对策 / 何时看 / 类级去重） ----------
+const KNOWN = [
+  [/文件被改动/, { name: "edit", error: { message: 'cannot edit "x.md": file changed since it was read - re-read the file, then retry' } }, /^learn-collab/, /并发写冲突/],
+  [/代理失效/, { name: "pwsh", error: { message: "fatal: unable to access 'https://github.com/x.git/': Failed to connect to github.com port 443 via 127.0.0.1" } }, /^learn-/, /代理配置失效/],
+  [/网络不可达/, { name: "web_fetch", error: { message: "web fetch failed: TypeError: fetch failed" } }, /^learn-/, /网络不可达/],
+  [/语法错/, { name: "pwsh", error: { message: "SyntaxError: Unexpected reserved word" } }, /^learn-/, /生成代码语法错/],
+];
+for (const [label, exec0, idRe, titleRe] of KNOWN) {
+  test(`v0.6.0：真实事故「${label.source}」被正确归类（${titleRe.source}）`, () => {
+    const r = reflect({ name: exec0.name }, { error: exec0.error });
+    assert.ok(r, "应生成教训");
+    assert.match(r.id, idRe, `id 实际 ${r.id}`);
+    assert.match(r.title, titleRe, `标题实际 ${r.title}`);
+    assert.ok(/## 症状/.test(r.body) && /## 根因/.test(r.body) && /## 对策/.test(r.body), "正文必须是三段式");
+    assert.ok(r.when && r.when.length > 8, "必须给出「何时看」");
+  });
+}
+
+test("v0.6.0：同类失败只占一条（路径/数字不同也同 id）——这是治 10 条 edit 同质条目的关键", () => {
+  const a = reflect({ name: "edit" }, { error: { message: 'cannot edit "C:\\a\\x.md": file changed since it was read' } });
+  const b = reflect({ name: "edit" }, { error: { message: 'cannot edit "D:\\b\\y.md": file changed since it was read' } });
+  assert.equal(a.id, b.id, `同工具同类应同 id：${a.id} vs ${b.id}`);
+});
+
+test("v0.6.0：不同错误类 → 不同 id（不会被错误地并成一条）", () => {
+  const a = reflect({ name: "pwsh" }, { error: { message: "SyntaxError: Unexpected token" } });
+  const b = reflect({ name: "pwsh" }, { error: { message: "fetch failed: ENOTFOUND" } });
+  assert.notEqual(a.id, b.id);
+});
+
+test("v0.6.0：未归类条目必须诚实标注（不编根因）", () => {
+  const r = reflect({ name: "write" }, { error: { message: "boom unexpected failure zzz" } });
+  assert.match(r.title, /未归类/);
+  assert.ok(/不含诊断/.test(r.body), "未归类条目应说明它不含诊断");
+});
+
+test("v0.6.0：落盘的 description 含「何时看」（模型据此判断要不要加载）", () => {
+  const dir = sw.skillsDir();   // 测试已在 import 前把 META_SKILLS_DIR 指向隔离目录
+  {
+    const skill = reflect({ name: "edit" }, { error: { message: "file changed since it was read" } });
+    sw.writeSkill({ ...skill, id: "learn-desc-test" });
+    const md = readFileSync(join(dir, "learn-desc-test", "SKILL.md"), "utf8");
+    const desc = (md.match(/^description:\s*(.*)$/m) || [])[1] || "";
+    assert.ok(/何时看：/.test(desc), "描述应含何时看：" + desc);
+    assert.ok(/Triggers:/.test(desc), "描述仍含 Triggers（检索依赖它）");
+    assert.ok(!/"/.test(desc), "描述里不得残留双引号（会破坏 frontmatter 解析）");
+  }
+});
+
+
+// ---------- v0.6.0：frontmatter 必须合法（键在第 0 列）+ 解析往返 ----------
+test("v0.6.0：写出的 frontmatter 每个键都在第 0 列（缩进会把 name 变成多行续行）", () => {
+  const skill = reflect({ name: "edit" }, { error: { message: "file changed since it was read" } });
+  const res = sw.writeSkill({ ...skill, id: "learn-fm-col0" });
+  const md = readFileSync(res.file, "utf8");
+  const fm = md.split("---")[1];
+  for (const line of fm.split("\n")) {
+    if (!line.trim()) continue;
+    assert.equal(line, line.replace(/^\s+/, ""), `frontmatter 键不得缩进：${JSON.stringify(line)}`);
+  }
+});
+
+test("v0.6.0：parseSkillMeta 能读回 title 与 triggers（缩进 bug 会让它们变成 id 与空数组）", () => {
+  const skill = reflect({ name: "edit" }, { error: { message: "file changed since it was read" } });
+  const res = sw.writeSkill({ ...skill, id: "learn-fm-parse" });
+  const md = readFileSync(res.file, "utf8");
+  const meta = sw.parseSkillMeta(md, "learn-fm-parse");
+  assert.ok(/并发写冲突/.test(meta.title), "title 应含类名，实际 " + meta.title);
+  assert.ok(meta.triggers.length >= 3, "triggers 不应为空，实际 " + JSON.stringify(meta.triggers));
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
