@@ -30,6 +30,7 @@
 |---|---|
 | 通过 MCP / 第三方工具发布 | 动作不经过被守卫的 shell 工具 |
 | 代码里发 HTTP 请求（Python/Node 脚本内） | 检测覆盖 `curl`/`Invoke-RestMethod`，不覆盖任意语言里的 HTTP 客户端 |
+| 程序内工具调用（`run_code` 里再调工具） | **据外部评审**（DSH 讨论区 #7085，引 `packages/core/tools/src/ptc.ts:413` "prepare = pre-execute/guards"）这类调用走**同一条 staged 路径**、guard 看得到 —— **我们未在出货包里独立复现该行**，故此处只作标注；真正的洞是**上一条**：程序内部的网络出口 |
 | 定时任务里的推送（如本仓配套的雷达脚本） | **不经过 harness，闸门看不到**（这是刻意的：闸门只守 agent 的动作） |
 | 用别名/包装脚本（`mypush.sh` 内部再调推送） | 命令位不是推送本身 |
 | 通过 Git 客户端 GUI / IDE 推送 | 不经过 shell |
