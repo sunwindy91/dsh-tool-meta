@@ -725,6 +725,32 @@ test("v0.6.2：pwsh -c \"git push …\" 包裹层仍被识别（剥引号不影�
   assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: 'pwsh -c "git push origin main"' } }) === "string");
 });
 
+
+// ---------- v0.6.3：GraphQL mutation 是对外动作（query 不是） ----------
+test("v0.6.3：gh api graphql + @文件里的 mutation → 拦（真实来源：我当天的两次公开发布）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "meta-gql-"));
+  const mut = join(dir, "m.graphql");
+  writeFileSync(mut, "mutation ($id: ID!) { addDiscussionComment(input: {discussionId: $id}) { comment { url } } }");
+  const g = gateMod.createGate();
+  const cmd = `gh api graphql -F query=@${mut} -F discussionId=X`;
+  assert.ok(typeof g.evaluate({ name: "pwsh", arguments: { command: cmd } }) === "string", "mutation 应被拦");
+});
+
+test("v0.6.3：同样的调用但文件里是只读 query → 不拦（避免'每次查询都要声明'的摩擦）", () => {
+  const dir = mkdtempSync(join(tmpdir(), "meta-gql-"));
+  const q = join(dir, "q.graphql");
+  writeFileSync(q, "query { repository(owner: \"a\", name: \"b\") { id } }");
+  const g = gateMod.createGate();
+  const cmd = `gh api graphql -F query=@${q}`;
+  assert.equal(g.evaluate({ name: "pwsh", arguments: { command: cmd } }), undefined, "只读 query 不该被拦");
+});
+
+test("v0.6.3：内联 mutation 文本也拦", () => {
+  const g = gateMod.createGate();
+  const cmd = "gh api graphql -f query=mutation%20%7B%20addDiscussionComment%20%7D";
+  assert.ok(typeof g.evaluate({ name: "pwsh", arguments: { command: cmd } }) === "string");
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
