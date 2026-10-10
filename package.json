@@ -1,6 +1,6 @@
 {
   "name": "@sunwindy/dsh-tool-meta",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "description": "自进化元认知引擎：观测 tools/result 成败 → 反思 → 自动沉淀 SKILL + 效果账本 → 滋养后续会话；并带「不可逆动作」前置闸门（删除 / 对外动作）与审计流水。零依赖、零私有格式。",
   "type": "module",
   "main": "lib/index.js",

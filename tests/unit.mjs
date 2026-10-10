@@ -671,6 +671,60 @@ test("v0.6.0：parseSkillMeta 能读回 title 与 triggers（缩进 bug 会让�
   assert.ok(meta.triggers.length >= 3, "triggers 不应为空，实际 " + JSON.stringify(meta.triggers));
 });
 
+
+// ---------- v0.6.1：对外声明 target 应按 token 匹配（复合形态不该被拒） ----------
+function withDecl(row, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "meta-decl-"));
+  const old = process.env.META_SKILLS_DIR;
+  process.env.META_SKILLS_DIR = dir;
+  mkdirSync(join(dir, ".audit"), { recursive: true });
+  writeFileSync(join(dir, ".audit", "declarations.jsonl"), JSON.stringify(row) + "\n");
+  try {
+    return fn(gateMod.createGate());
+  } finally {
+    if (old === undefined) delete process.env.META_SKILLS_DIR; else process.env.META_SKILLS_DIR = old;
+  }
+}
+
+test("v0.6.1：复合 target（owner/repo#123）应匹配命令里分散出现的 token", () => {
+  withDecl({ id: "d-comp", action: "publish", target: "a2aproject/A2A#2250", precondition: "已核验" }, (g) => {
+    const r = g.evaluate({ name: "shell", arguments: { command: "gh issue comment 2250 -R a2aproject/A2A --body-file x.md" } });
+    assert.equal(r, undefined, "复合 target 不该被拒：" + String(r));
+  });
+});
+
+test("v0.6.1：无关 target 仍必须被拒（token 匹配不能变成放行一切）", () => {
+  withDecl({ id: "d-miss", action: "publish", target: "sunwindy91/dsh-tool-meta", precondition: "已核验" }, (g) => {
+    const r = g.evaluate({ name: "shell", arguments: { command: "gh issue comment 2250 -R a2aproject/A2A --body-file x.md" } });
+    assert.ok(typeof r === "string", "无关声明不该放行：" + String(r));
+  });
+});
+
+test("v0.6.1：git push origin main 的原连续匹配仍生效", () => {
+  withDecl({ id: "d-git", action: "publish", target: "origin/main", precondition: "已核验" }, (g) => {
+    assert.equal(g.evaluate({ name: "shell", arguments: { command: "git push origin main" } }), undefined);
+  });
+});
+
+
+// ---------- v0.6.2：引号里是数据，不是命令（第 5 次同族误报） ----------
+test("v0.6.2：提交信息里描述一次公开评论 → 不拦（引号内容属数据）", () => {
+  const g = gateMod.createGate();
+  const cmd = 'git commit -q -m "fix: 记录上一轮那条公开评论（issue comment 2250）的处理"';
+  assert.equal(g.evaluate({ name: "pwsh", arguments: { command: cmd } }), undefined, "引号里的描述不该被拦");
+});
+
+test("v0.6.2：真正的公开评论仍必须被拦（引号剥离不能把真动作也放过）", () => {
+  const g = gateMod.createGate();
+  const cmd = 'gh issue comment 2250 -R a2aproject/A2A --body "这里提到 git push 也只是文本"';
+  assert.ok(typeof g.evaluate({ name: "pwsh", arguments: { command: cmd } }) === "string", "真动作应被拦");
+});
+
+test("v0.6.2：pwsh -c \"git push …\" 包裹层仍被识别（剥引号不影响包裹层判定）", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "shell", arguments: { command: 'pwsh -c "git push origin main"' } }) === "string");
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
