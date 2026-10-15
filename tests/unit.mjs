@@ -775,6 +775,42 @@ test("v0.6.4：只读命令仍不拦（防止边界放宽后误伤）", () => {
   assert.equal(g.evaluate({ name: "pwsh", arguments: { command: 'git status --short; git log --oneline -1' } }), undefined);
 });
 
+
+// ---------- v0.6.5：声明有效期（旧声明不得被后来的无关动作消费） ----------
+function withDeclRow(row, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "meta-ttl-"));
+  const old = process.env.META_SKILLS_DIR;
+  process.env.META_SKILLS_DIR = dir;
+  mkdirSync(join(dir, ".audit"), { recursive: true });
+  writeFileSync(join(dir, ".audit", "declarations.jsonl"), JSON.stringify(row) + "\n");
+  try {
+    return fn(gateMod.createGate());
+  } finally {
+    if (old === undefined) delete process.env.META_SKILLS_DIR; else process.env.META_SKILLS_DIR = old;
+  }
+}
+
+test("v0.6.5：5 天前的旧声明不得再放行（真实事故：10-10 的声明被 10-15 的无关动作消费）", () => {
+  const old = new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString();
+  withDeclRow({ id: "d-old", action: "publish", target: "origin/main", precondition: "当时核验过", created_at: old }, (g) => {
+    const r = g.evaluate({ name: "pwsh", arguments: { command: "git push --dry-run origin main" } });
+    assert.ok(typeof r === "string", "过期声明不该放行：" + String(r));
+  });
+});
+
+test("v0.6.5：刚写的声明仍然放行（有效期不能误伤正常用法）", () => {
+  const now = new Date().toISOString();
+  withDeclRow({ id: "d-new", action: "publish", target: "origin/main", precondition: "刚刚核验", created_at: now }, (g) => {
+    assert.equal(g.evaluate({ name: "pwsh", arguments: { command: "git push origin main" } }), undefined);
+  });
+});
+
+test("v0.6.5：不带 created_at 的声明按原样处理（兼容手工书写）", () => {
+  withDeclRow({ id: "d-no-ts", action: "publish", target: "origin/main", precondition: "手工声明" }, (g) => {
+    assert.equal(g.evaluate({ name: "pwsh", arguments: { command: "git push origin main" } }), undefined);
+  });
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
