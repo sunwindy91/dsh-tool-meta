@@ -751,6 +751,30 @@ test("v0.6.3：内联 mutation 文本也拦", () => {
   assert.ok(typeof g.evaluate({ name: "pwsh", arguments: { command: cmd } }) === "string");
 });
 
+
+// ---------- v0.6.4：脚本块/循环体里的真命令必须被评估（真实漏判） ----------
+test("v0.6.4：for 循环体里的 `$o = git push` 必须被拦（照抄真实失败命令，不转述）", () => {
+  const g = gateMod.createGate();
+  const cmd = 'for($i=1;$i -le 3;$i++){ $o = git push origin main 2>&1 | Out-String; if($LASTEXITCODE -eq 0){ break } }';
+  assert.ok(typeof g.evaluate({ name: "pwsh", arguments: { command: cmd } }) === "string", "循环体里的推送应被拦");
+});
+
+test("v0.6.4：PowerShell 脚本块 { } 里的推送也必须被拦", () => {
+  const g = gateMod.createGate();
+  assert.ok(typeof g.evaluate({ name: "pwsh", arguments: { command: 'if ($x) { git push origin main }' } }) === "string");
+});
+
+test("v0.6.4：内容型工具仍然豁免（文档里提到推送不拦）", () => {
+  const g = gateMod.createGate();
+  const r = g.evaluate({ name: "write", arguments: { file_path: "docs/x.md", content: "示例：for(...){ git push origin main }" } });
+  assert.equal(r, undefined, "内容型工具不该被拦");
+});
+
+test("v0.6.4：只读命令仍不拦（防止边界放宽后误伤）", () => {
+  const g = gateMod.createGate();
+  assert.equal(g.evaluate({ name: "pwsh", arguments: { command: 'git status --short; git log --oneline -1' } }), undefined);
+});
+
 console.log(cases.join("\n"));
 console.log(`\n${passed}/${cases.length} 通过`);
 if (process.exitCode) {
